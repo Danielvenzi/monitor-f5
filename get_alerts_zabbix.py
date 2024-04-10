@@ -62,6 +62,7 @@ def get_alerts_info(auth_token, group_id, now, now_minus_one):
             "id": 1
         }
     
+    # Tenta coletar os alertas do Zabbix
     try:
 
         response = requests.post("http://172.20.0.24/zabbix/api_jsonrpc.php", json=alert_query)
@@ -69,6 +70,7 @@ def get_alerts_info(auth_token, group_id, now, now_minus_one):
 
         result = query_response['result']
 
+    # Tenta fazer a query 6 vezes em caso de timeout
     except requests.exceptions.Timeout as err:
         counter = 0
         result = []
@@ -85,16 +87,20 @@ def get_alerts_info(auth_token, group_id, now, now_minus_one):
 
             counter += 1
 
+    # Trata o erro Connection Error
     except requests.exceptions.ConnectionError as err:
         print(err)
         result = []
         pass
 
+    # Trata o erro Too Many Requests
     except requests.exceptions.TooManyRedirects as err:
         print(err)
         result = []
         pass
 
+
+    # Trata o erro HTTP Error
     except requests.exceptions.HTTPError as err:
         print(err)
         result = []
@@ -185,10 +191,15 @@ if __name__ == "__main__":
 
             for alert in result_alerts:
                 
-                # Verifica se o alerta já foi enviado
+                # Verifica se o eventID já foi enviado
                 if alert['eventid'] not in sent_ids:
 
-                    print("Novo alerta - {}".format(alert['eventid']))
+                    # Verifica se o alerta específico desse evento já foi enviado
+                    if alert['alertid'] not in list(sent_alerts.keys()):
+
+                        sent_alerts[alert['eventid']] = [alert['alertid']]
+
+                    print("Novo alerta - {} - {}".format(alert['eventid'], alert['alertid']))
 
                     #TODO fazer a comunicação com telegram aqui
                     asyncio.run(send_telegram_message("ALERT {}\n\nSUBJECT: {}\n\nMESSAGE: {}\n".format(group_ids[gid], 
@@ -196,6 +207,24 @@ if __name__ == "__main__":
                                                                             alert['message'])))
 
                     sent_ids.append(alert['eventid'])
+
+                # Se o evento já tiver sido reportado verifica se o alerta é diferente
+                elif alert['eventid'] in sent_ids:
+
+                    if alert['alertid'] not in sent_alerts[alert['eventid']]:
+
+                        sent_alerts[alert['eventid']].append(alert['alertid'])
+
+                        print("Novo alerta - {} - {}".format(alert['eventid'], alert['alertid']))
+
+                        #TODO fazer a comunicação com telegram aqui
+                        asyncio.run(send_telegram_message("ALERT {}\n\nSUBJECT: {}\n\nMESSAGE: {}\n".format(group_ids[gid], 
+                                                                                alert['subject'], 
+                                                                                alert['message'])))
+
+                    else:
+
+                        pass
 
         # Função apra desautenticar a sessão do usuário Admin na API do Zabbix
         deauth_from_zabbix(api_token)
@@ -209,6 +238,9 @@ if __name__ == "__main__":
 
             # Limpa os IDs já enviados
             sent_ids.clear()
+
+            # Limpa os alertas já enviados
+            sent_alerts.clear()
 
         # Esperar por 60 segundos para refazer a pesquisa por alertas
         timet.sleep(60)
