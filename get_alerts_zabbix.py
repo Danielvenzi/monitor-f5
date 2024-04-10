@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import requests
 from datetime import datetime, timedelta, time, date
 import time as timet
@@ -60,11 +61,44 @@ def get_alerts_info(auth_token, group_id, now, now_minus_one):
             "auth": str(auth_token),
             "id": 1
         }
+    
+    try:
 
-    response = requests.post("http://172.20.0.24/zabbix/api_jsonrpc.php", json=alert_query)
-    query_response = response.json()
+        response = requests.post("http://172.20.0.24/zabbix/api_jsonrpc.php", json=alert_query)
+        query_response = response.json()
 
-    result = query_response['result']
+        result = query_response['result']
+
+    except requests.exceptions.Timeout as err:
+        counter = 0
+        result = []
+        while counter <= 5:
+
+            try:
+                response = requests.post("http://172.20.0.24/zabbix/api_jsonrpc.php", json=alert_query)
+                query_response = response.json()
+
+                result = query_response['result']
+
+            except requests.exceptions.Timeout:
+                pass
+
+            counter += 1
+
+    except requests.exceptions.ConnectionError as err:
+        print(err)
+        result = []
+        pass
+
+    except requests.exceptions.TooManyRedirects as err:
+        print(err)
+        result = []
+        pass
+
+    except requests.exceptions.HTTPError as err:
+        print(err)
+        result = []
+        pass
 
     return result
 
@@ -115,6 +149,7 @@ async def send_telegram_message(message):
 
 
 sent_ids = []
+sent_alerts = {}
 
 if __name__ == "__main__":
 
